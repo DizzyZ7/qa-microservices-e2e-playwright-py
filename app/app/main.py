@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI, Depends, HTTPException, Response
+from fastapi import FastAPI, Depends, HTTPException, Response, Cookie, Form
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
@@ -14,6 +14,7 @@ app = FastAPI(title="Demo Orders Service")
 
 Base.metadata.create_all(bind=engine)
 
+
 def get_db():
     db = SessionLocal()
     try:
@@ -21,17 +22,24 @@ def get_db():
     finally:
         db.close()
 
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
+
+# --- API ---
+
 @app.post("/api/orders", response_model=OrderOut)
 def api_create_order(payload: OrderCreate, db: Session = Depends(get_db)):
+    # ожидаем JSON: {"item": "..."}
     return crud.create_order(db, payload.item)
+
 
 @app.get("/api/orders", response_model=list[OrderOut])
 def api_list_orders(db: Session = Depends(get_db)):
     return crud.list_orders(db)
+
 
 @app.post("/api/orders/{order_id}/process", response_model=OrderOut)
 def api_process_order(order_id: int, db: Session = Depends(get_db)):
@@ -40,12 +48,22 @@ def api_process_order(order_id: int, db: Session = Depends(get_db)):
     except ValueError:
         raise HTTPException(status_code=404, detail="Order not found")
 
+
 @app.post("/api/auth/login")
-def login(username: str, password: str, response: Response):
+def api_login(
+    response: Response,
+    username: str = Form(...),
+    password: str = Form(...),
+):
+    # Playwright будет слать form data -> Form(...) обязательно
     if username != APP_USERNAME or password != APP_PASSWORD:
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    response.set_cookie("session", "ok", httponly=True)
+
+    response.set_cookie("session", "ok", httponly=True, samesite="lax")
     return {"ok": True}
+
+
+# --- UI (очень простая страничка) ---
 
 @app.get("/", response_class=HTMLResponse)
 def home():
@@ -57,6 +75,7 @@ def home():
       </body>
     </html>
     """
+
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page():
@@ -73,28 +92,45 @@ def login_page():
     </html>
     """
 
+
 @app.post("/ui/login", response_class=HTMLResponse)
-def ui_login(username: str = "", password: str = "", response: Response = None):
+def ui_login(
+    username: str = Form(""),
+    password: str = Form(""),
+):
+    # HTML form тоже шлёт form-urlencoded -> Form(...) обязательно
     if username != APP_USERNAME or password != APP_PASSWORD:
         return HTMLResponse("<p id='error'>Invalid</p><a href='/login'>Back</a>", status_code=401)
+
     response = HTMLResponse("<script>window.location='/orders'</script>")
-    response.set_cookie("session", "ok", httponly=True)
+    response.set_cookie("session", "ok", httponly=True, samesite="lax")
     return response
+
 
 def require_session(session: str | None):
     if session != "ok":
         raise HTTPException(status_code=401, detail="Unauthorized")
 
+
 @app.get("/orders", response_class=HTMLResponse)
-def orders_page(session: str | None = None, db: Session = Depends(get_db)):
+def orders_page(
+    session: str | None = Cookie(default=None),
+    db: Session = Depends(get_db),
+):
+    # ВАЖНО: Cookie(...) — иначе FastAPI не достанет cookie "session"
     require_session(session)
+
     orders = crud.list_orders(db)
-    items = "\n".join([f"<li id='order-{o.id}'>#{o.id} {o.item} [{o.status}]</li>" for o in orders])
+    items = "\n".join(
+        [f"<li id='order-{o.id}'>#{o.id} {o.item} [{o.status}]</li>" for o in orders]
+    )
+
     return f"""
     <html>
       <body>
         <h2>Orders</h2>
         <ul id="orders">{items}</ul>
+
         <form method="post" action="/ui/process">
           <label>Order ID</label>
           <input name="order_id" id="order_id"/>
@@ -104,11 +140,18 @@ def orders_page(session: str | None = None, db: Session = Depends(get_db)):
     </html>
     """
 
+
 @app.post("/ui/process", response_class=HTMLResponse)
-def ui_process(order_id: int, session: str | None = None, db: Session = Depends(get_db)):
+def ui_process(
+    order_id: int = Form(...),
+    session: str | None = Cookie(default=None),
+    db: Session = Depends(get_db),
+):
     require_session(session)
+
     try:
         crud.mark_order_processed(db, order_id)
     except ValueError:
         return HTMLResponse("<p id='notfound'>Not found</p><a href='/orders'>Back</a>", status_code=404)
+
     return HTMLResponse("<script>window.location='/orders'</script>")
