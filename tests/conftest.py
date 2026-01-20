@@ -7,8 +7,10 @@ from core.api_client import ApiClient
 from core.db import create_db_engine, delete_order
 from core.settings import settings
 
+
 def _safe_name(name: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_.-]+", "_", name)
+
 
 @pytest.fixture(scope="session", autouse=True)
 def _env_defaults():
@@ -17,9 +19,11 @@ def _env_defaults():
     settings.app_username = os.getenv("APP_USERNAME", settings.app_username)
     settings.app_password = os.getenv("APP_PASSWORD", settings.app_password)
 
+
 @pytest.fixture(scope="session")
 def db_engine():
     return create_db_engine()
+
 
 @pytest.fixture
 def cleanup_orders(db_engine):
@@ -28,18 +32,23 @@ def cleanup_orders(db_engine):
     for order_id in created:
         delete_order(db_engine, order_id)
 
+
 @pytest.fixture
 def api_client(request: APIRequestContext) -> ApiClient:
     return ApiClient(request)
 
+
 @pytest.fixture
 def authed_page(page: Page):
+    # Логинимся через API, чтобы UI тест был быстрый и стабильный.
+    # Сервер принимает form data -> data= корректно (из-за Form(...) на backend)
     r = page.request.post(
         f"{settings.base_url}/api/auth/login",
         data={"username": settings.app_username, "password": settings.app_password},
     )
     r.raise_for_status()
     return page
+
 
 @pytest.fixture(autouse=True)
 def trace_on_failure(context, request):
@@ -52,6 +61,7 @@ def trace_on_failure(context, request):
         context.tracing.stop(path=trace_path)
     else:
         context.tracing.stop()
+
 
 @pytest.hookimpl(hookwrapper=True, tryfirst=True)
 def pytest_runtest_makereport(item, call):
