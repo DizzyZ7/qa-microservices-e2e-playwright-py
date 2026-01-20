@@ -10,10 +10,13 @@ permissions:
   pages: write
   id-token: write
 
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,13 +33,36 @@ jobs:
           path: artifacts/traces
 
       - name: Install Allure CLI
+        if: always()
         run: |
           npm i -g allure-commandline --silent
 
-      - name: Generate Allure Report
+      - name: Generate Allure Report (or fallback)
         if: always()
+        shell: bash
         run: |
-          allure generate allure-results -o allure-report --clean || true
+          set -e
+          mkdir -p allure-report
+
+          # Попробуем сгенерировать, но не падаем, если результатов нет
+          if [ -d "allure-results" ] && [ "$(ls -A allure-results 2>/dev/null | wc -l)" -gt 0 ]; then
+            allure generate allure-results -o allure-report --clean || true
+          else
+            echo "allure-results отсутствует или пустой — создаю заглушку отчёта"
+            cat > allure-report/index.html <<'HTML'
+          <!doctype html>
+          <html lang="ru"><meta charset="utf-8"/>
+          <title>Allure report</title>
+          <body style="font-family: sans-serif">
+            <h1>Allure report не сгенерирован</h1>
+            <p>Папка <code>allure-results</code> отсутствует или пустая.</p>
+            <p>Проверь, что тесты пишут результаты Allure и что они доступны в workspace GitHub Actions.</p>
+          </body></html>
+          HTML
+          fi
+
+          echo "Содержимое allure-report:"
+          ls -la allure-report || true
 
       - name: Upload Allure Report artifact
         if: always()
@@ -56,13 +82,13 @@ jobs:
           path: allure-report
 
   deploy:
-    if: always()
     needs: test
+    # deploy можно оставить always(), но теперь артефакт будет всегда (хотя бы заглушка)
+    if: always()
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
