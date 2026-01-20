@@ -34,7 +34,7 @@ services:
       DATABASE_URL: postgresql+psycopg2://app:app@db:5432/app
       APP_USERNAME: demo
       APP_PASSWORD: demo
-      PYTHONPATH: /work/app
+      PYTHONPATH: /work
     depends_on:
       app:
         condition: service_started
