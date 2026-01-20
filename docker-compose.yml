@@ -1,0 +1,43 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  app:
+    build:
+      context: ./app
+    environment:
+      DATABASE_URL: postgresql+psycopg2://app:app@db:5432/app
+      APP_USERNAME: demo
+      APP_PASSWORD: demo
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  tests:
+    build:
+      context: .
+    environment:
+      BASE_URL: http://app:8000
+      DATABASE_URL: postgresql+psycopg2://app:app@db:5432/app
+      APP_USERNAME: demo
+      APP_PASSWORD: demo
+    depends_on:
+      app:
+        condition: service_started
+    volumes:
+      - ./artifacts:/work/artifacts
+      - ./allure-results:/work/allure-results
+    command: ["pytest", "-m", "api or ui"]
