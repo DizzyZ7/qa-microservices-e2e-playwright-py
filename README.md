@@ -38,3 +38,35 @@ project-root/
 ├── Dockerfile              # Docker-образ для тестов
 ├── pytest.ini
 └── requirements.txt
+```
+
+## ⚙️ Локальный запуск
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+playwright install
+```
+
+Если нужны локальные переопределения окружения, создай `.env` на основе `.env.example`.
+
+Для запуска приложения и БД через Docker:
+
+```bash
+docker compose up --build
+```
+
+Для запуска тестов локально:
+
+```bash
+pytest -m "api or ui"
+```
+
+## ✅ Что покрыто тестами
+
+- healthcheck сервиса
+- создание заказа через API с проверкой состояния в PostgreSQL
+- обработка заказа через API и UI
+- отображение статуса заказа в UI
+- ошибка логина при невалидных данных

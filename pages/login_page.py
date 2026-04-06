@@ -1,6 +1,7 @@
 from playwright.sync_api import Page, expect
 from core.settings import settings
 
+
 class LoginPage:
     def __init__(self, page: Page):
         self.page = page
@@ -11,6 +12,7 @@ class LoginPage:
 
     def open(self):
         self.page.goto(f"{settings.base_url}/login")
+        expect(self.username).to_be_visible()
 
     def login(self, username: str, password: str):
         self.username.fill(username)
@@ -19,3 +21,7 @@ class LoginPage:
 
     def expect_login_failed(self):
         expect(self.error).to_be_visible()
+
+    def expect_open(self):
+        expect(self.page).to_have_url(f"{settings.base_url}/login")
+        expect(self.username).to_be_visible()

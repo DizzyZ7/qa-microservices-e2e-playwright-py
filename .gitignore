@@ -13,3 +13,4 @@ artifacts/screenshots/
 .DS_Store
 .idea/
 .vscode/
+run-logs/

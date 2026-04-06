@@ -1,0 +1,25 @@
+<html>
+  <body>
+    <h2>Orders</h2>
+    <ul id="orders">
+      {% for order in orders %}
+      <li id="order-{{ order.id }}">#{{ order.id }} {{ order.item }} [{{ order.status }}]</li>
+      {% endfor %}
+    </ul>
+
+    <form method="post" action="/ui/process">
+      <label>Order ID</label>
+      <input name="order_id" id="order_id"/>
+      <button id="process" type="submit">Process</button>
+    </form>
+
+    <form method="post" action="/ui/logout">
+      <button id="logout" type="submit">Logout</button>
+    </form>
+
+    {% if error %}
+    <p id="notfound">{{ error }}</p>
+    <a href="/orders">Back</a>
+    {% endif %}
+  </body>
+</html>

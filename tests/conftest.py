@@ -1,7 +1,11 @@
 import os
 import re
+import time
+from urllib.error import URLError
+from urllib.request import urlopen
+
 import pytest
-from playwright.sync_api import Page, APIRequestContext
+from playwright.sync_api import Page, Playwright, APIRequestContext
 
 from core.api_client import ApiClient
 from core.db import create_db_engine, delete_order
@@ -12,17 +16,41 @@ def _safe_name(name: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_.-]+", "_", name)
 
 
+def _wait_for_base_url(timeout_seconds: float = 5.0) -> None:
+    deadline = time.time() + timeout_seconds
+    health_url = f"{settings.base_url}/health"
+
+    while time.time() < deadline:
+        try:
+            with urlopen(health_url, timeout=1.0) as response:
+                if response.status == 200:
+                    return
+        except URLError:
+            time.sleep(0.25)
+
+    pytest.skip(
+        f"Service is not reachable at {settings.base_url}. "
+        "Start the stack before running E2E tests."
+    )
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _env_defaults():
-    settings.base_url = os.getenv("BASE_URL", settings.base_url)
-    settings.database_url = os.getenv("DATABASE_URL", settings.database_url)
-    settings.app_username = os.getenv("APP_USERNAME", settings.app_username)
-    settings.app_password = os.getenv("APP_PASSWORD", settings.app_password)
+    os.environ.setdefault("BASE_URL", settings.base_url)
+    os.environ.setdefault("DATABASE_URL", settings.database_url)
+    os.environ.setdefault("APP_USERNAME", settings.app_username)
+    os.environ.setdefault("APP_PASSWORD", settings.app_password)
 
 
 @pytest.fixture(scope="session")
 def db_engine():
     return create_db_engine()
+
+
+@pytest.fixture(autouse=True)
+def ensure_service_ready(request):
+    if request.node.get_closest_marker("api") or request.node.get_closest_marker("ui"):
+        _wait_for_base_url()
 
 
 @pytest.fixture
@@ -34,24 +62,35 @@ def cleanup_orders(db_engine):
 
 
 @pytest.fixture
-def api_client(request: APIRequestContext) -> ApiClient:
-    return ApiClient(request)
+def api_request_context(playwright: Playwright) -> APIRequestContext:
+    context = playwright.request.new_context(base_url=settings.base_url)
+    yield context
+    context.dispose()
+
+
+@pytest.fixture
+def api_client(api_request_context: APIRequestContext) -> ApiClient:
+    return ApiClient(api_request_context)
 
 
 @pytest.fixture
 def authed_page(page: Page):
-    # Логинимся через API, чтобы UI тест был быстрый и стабильный.
-    # Сервер принимает form data -> data= корректно (из-за Form(...) на backend)
-    r = page.request.post(
+    # Быстрая авторизация через browser context API вместо UI-формы.
+    r = page.context.request.post(
         f"{settings.base_url}/api/auth/login",
-        data={"username": settings.app_username, "password": settings.app_password},
+        form={"username": settings.app_username, "password": settings.app_password},
     )
-    r.raise_for_status()
+    assert r.ok, f"Login failed with status {r.status}: {r.text()}"
     return page
 
 
 @pytest.fixture(autouse=True)
-def trace_on_failure(context, request):
+def trace_on_failure(request):
+    if request.node.get_closest_marker("ui") is None:
+        yield
+        return
+
+    context = request.getfixturevalue("context")
     context.tracing.start(screenshots=True, snapshots=True, sources=True)
     yield
     failed = getattr(request.node, "rep_call", None) and request.node.rep_call.failed

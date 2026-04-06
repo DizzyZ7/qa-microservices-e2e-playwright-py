@@ -1,0 +1,14 @@
+<html>
+  <body>
+    <h2>Login</h2>
+    <form method="post" action="/ui/login">
+      <label>Username</label><input name="username" id="username"/>
+      <label>Password</label><input name="password" id="password" type="password"/>
+      <button id="submit" type="submit">Sign in</button>
+    </form>
+    {% if error %}
+    <p id="error">{{ error }}</p>
+    <a href="/login">Back</a>
+    {% endif %}
+  </body>
+</html>
